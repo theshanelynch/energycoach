@@ -18,3 +18,8 @@ docker/homeassistant/secrets/
 docker/homeassistant/config/deps/
 docker/homeassistant/config/.uuid
 
+
+# ESB
+esb/.venv/
+esb/out/
+secrets/

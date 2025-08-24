@@ -46,3 +46,39 @@ After running, a QR code will be displayed in the terminal to easily open the Ho
 | `scripts/ha_token_check.sh` | Utility to verify the long-lived homeassisant token in `secrets/ha_token.txt`. |
 
 
+# Python environment for ESB fetch and publish
+
+This README sets up an isolated Python environment for the ESB fetch scripts, installs Playwright with the Chromium runtime, and shows quick checks so everything works on your Mac.
+
+## Quick start
+
+1. From your project root create and activate a virtual environment
+```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+```
+
+2. Upgrade pip and install Playwright
+```bash
+   python -m pip install --upgrade pip
+   python -m pip install playwright
+```
+
+3. Install the Playwright browser runtime
+```bash
+   python -m playwright install chromium
+```
+
+4. Verify the install
+```bash
+   python -c "import sys, playwright; print('using', sys.executable); print('playwright ok')"
+   python - <<'PY'
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    b = p.chromium.launch(headless=True)
+    b.close()
+print("chromium ok")
+PY
+```
+
+You now have an isolated environment in `.venv` and a working Chromium runtime for scripted ESB fetches.
