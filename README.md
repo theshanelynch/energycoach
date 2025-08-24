@@ -1,84 +1,233 @@
-# Energy Coach - Home Assistant Dev Environment
+# EnergyCoach
 
-This project provides a local development environment for Home Assistant using Docker and Colima on macOS. It includes a suite of scripts to simplify starting, stopping, backing up, and restoring your instance.
+An intelligent Energy Coach agent that optimizes home energy usage by scheduling appliances based on solar forecasts, battery state, ESB usage patterns, and tariff windows.
 
-## Prerequisites
+## 🚀 Quick Start for Developers
 
-Before you begin, ensure you have the following installed:
+### Prerequisites
 
-- [Docker](https://www.docker.com/products/docker-desktop/)
-- [Colima](https://github.com/abiosoft/colima)
-- [jq](https://stedolan.github.io/jq/) (`brew install jq`)
-- qrencode (`brew install qrencode`)
+- **Node.js 18+** and **pnpm**
+- **Docker** and **Docker Compose**
+- **Existing Home Assistant** instance (see [Home Assistant Setup](#home-assistant))
+- **ESB Integration** already configured (see [ESB Setup](#esb))
 
-## Getting Started
-
-### 1. Start Colima
-
-For best performance, it's recommended to start Colima with sufficient resources and network address allocation.
+### 1. Clone and Install
 
 ```bash
-colima stop || true
-colima start --cpu 4 --memory 6 --disk 20 --network-address
+git clone <repository-url>
+cd energycoach
+pnpm install
 ```
 
-### 2. Start Home Assistant
-
-A single script handles permissions, sets the dynamic internal URL for mobile access, and starts all the Docker containers.
+### 2. Environment Setup
 
 ```bash
-./start_home_assistant.sh
+cp .env.example .env
 ```
 
-After running, a QR code will be displayed in the terminal to easily open the Home Assistant URL on your phone.
+Edit `.env` with your configuration:
 
-## Management Scripts
-
-| Script | Description |
-| :--- | :--- |
-| `./start_home_assistant.sh` | Starts the entire Home Assistant environment and generates a QR code for the URL. |
-| `./stop_home_assistant.sh` | Stops and removes all related containers gracefully. |
-| `scripts/ha_backup.sh` | Creates a compressed backup of the Home Assistant `config`, `media`, and `www` directories. |
-| `scripts/ha_get_ip.sh` | A utility script that prints the local network IP (macOS LAN or Colima). |
-| `scripts/ha_qr.sh` | Utility script that generates a QR code for the Home Assistant URL. |
-| `scripts/ha_restore.sh` | Restores the most recent backup. Asks for confirmation before overwriting data. |
-| `scripts/ha_set_internal_url.sh` | Utility script to set the `internal_url` in Home Assistant's configuration. |
-| `scripts/ha_token_check.sh` | Utility to verify the long-lived homeassisant token in `secrets/ha_token.txt`. |
-
-
-# Python environment for ESB fetch and publish
-
-This README sets up an isolated Python environment for the ESB fetch scripts, installs Playwright with the Chromium runtime, and shows quick checks so everything works on your Mac.
-
-## Quick start
-
-1. From your project root create and activate a virtual environment
 ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
+# Home Assistant (you already have this running)
+HA_BASE_URL=http://your-ha-instance:8123
+HA_TOKEN=your_long_lived_token
+
+# Energy Tariff Configuration
+TARIFF_JSON={"windows":[{"name":"night","from":"00:00","to":"08:00","price_cents":22.0},{"name":"day","from":"08:00","to":"17:00","price_cents":30.5},{"name":"peak","from":"17:00","to":"19:00","price_cents":40.0},{"name":"evening","from":"19:00","to":"24:00","price_cents":30.5}]}
+
+# Battery Settings
+BATTERY_FLOOR_PERCENT=30
+QUIET_HOURS_START=21:00
+QUIET_HOURS_END=07:00
+
+# Appliance Configuration
+DISHWASHER_ENTITY=switch.dishwasher_plug
+
+# Security
+GATEWAY_TOKEN=your_shared_bearer_token
 ```
 
-2. Upgrade pip and install Playwright
+### 3. Start Development
+
 ```bash
-   python -m pip install --upgrade pip
-   python -m pip install playwright
+# Start all services with hot reload
+pnpm dev
+
+# Or start individual services
+pnpm --filter @energycoach/gateway dev
+pnpm --filter @energycoach/planner dev
+pnpm --filter @energycoach/integrations dev
 ```
 
-3. Install the Playwright browser runtime
+### 4. Test the System
+
 ```bash
-   python -m playwright install chromium
+# Run all tests
+pnpm test
+
+# Test specific service
+pnpm --filter @energycoach/planner test
+
+# CLI testing
+pnpm --filter @energycoach/cli dev
 ```
 
-4. Verify the install
+## 🏗️ Project Structure
+
+```
+energycoach/
+├── packages/           # Shared libraries
+│   ├── contracts/     # Type definitions & API contracts
+│   └── config/        # Configuration management
+├── services/          # Core microservices
+│   ├── gateway/       # HTTP API & intent handling
+│   ├── planner/       # Energy optimization engine
+│   └── integrations/  # HA, ESB, Solix adapters
+├── apps/              # User interfaces
+│   ├── cli/          # Command-line interface
+│   └── voiceproxy/   # Voice assistant webhook
+└── docs/              # Documentation
+```
+
+## 🔌 Existing Integrations
+
+### Home Assistant
+You already have Home Assistant running. The EnergyCoach will connect to it to:
+- Read sensor data (battery, PV, usage)
+- Control smart plugs
+- Send notifications
+
+**Required Entities** (configure these in your HA):
+```yaml
+# Battery & Solar (Anker Solix integration)
+sensor.solix_soc          # Battery state of charge
+sensor.solix_pv_power     # PV generation power
+sensor.solix_grid_power   # Grid power
+
+# Usage (ESB integration)
+sensor.esb_usage_30min    # Half-hourly usage data
+
+# Control
+switch.dishwasher_plug    # Dishwasher smart plug
+```
+
+## 📊 Shared Data Directory
+
+EnergyCoach uses a centralized data directory (`data/`) that allows integrations to communicate without tight coupling:
+
+```
+data/
+├── esb/                    # ESB usage data
+├── homeassistant/          # HA sensor data
+├── solix/                  # Battery/solar data
+└── shared/                 # Cross-service data
+```
+
+**Benefits**:
+- ✅ **No tight coupling** between services
+- ✅ **Easy data access** for all integrations
+- ✅ **Consistent data format** across the system
+- ✅ **Simple debugging** and monitoring
+- ✅ **Backward compatibility** with existing setups
+
+**Usage**:
 ```bash
-   python -c "import sys, playwright; print('using', sys.executable); print('playwright ok')"
-   python - <<'PY'
-from playwright.sync_api import sync_playwright
-with sync_playwright() as p:
-    b = p.chromium.launch(headless=True)
-    b.close()
-print("chromium ok")
-PY
+# Check data freshness
+./data/manage.sh check
+
+# Export data for other services
+./data/manage.sh export esb /tmp/esb
+
+# See example data reader
+node data/example_reader.js
 ```
 
-You now have an isolated environment in `.venv` and a working Chromium runtime for scripted ESB fetches.
+### ESB Integration
+Your ESB setup provides:
+- Half-hourly electricity usage data
+- Daily import tracking
+- Historical usage patterns
+
+The EnergyCoach uses this to predict base load and optimize scheduling.
+
+**Data Location**: ESB data is automatically published to `data/esb/usage_raw.json` for easy access by other services.
+
+### Hot Reload
+- `pnpm dev` starts all services with nodemon
+- File changes trigger automatic restarts
+- TypeScript compilation on save
+
+## 📊 Monitoring & Debugging
+
+### Logs
+```bash
+# View service logs
+pnpm --filter @energycoach/gateway logs
+
+# Docker logs
+docker compose logs -f
+```
+
+### Health Checks
+```bash
+# Gateway health
+curl http://localhost:8080/v1/health
+
+# Planner health
+curl http://localhost:8081/health
+```
+
+### Debug Mode
+```bash
+# Enable debug logging
+DEBUG=* pnpm dev
+
+# CLI debug mode
+pnpm energy-coach plan --debug
+```
+
+
+
+### Environment Variables
+```bash
+# Verify environment loading
+pnpm --filter @energycoach/config test
+
+# Check config validation
+node -e "require('dotenv').config(); console.log(process.env.HA_BASE_URL)"
+```
+
+### Home Assistant Connection
+```bash
+# Test HA connection
+curl -H "Authorization: Bearer $HA_TOKEN" \
+  "$HA_BASE_URL/api/states/sensor.solix_soc"
+```
+
+
+## 🤝 Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch**
+3. **Make your changes**
+4. **Add tests for new functionality**
+5. **Submit a pull request**
+
+## 📞 Getting Help
+
+- **Documentation**: Check the `docs/` directory
+- **Issues**: Look for existing issues or create new ones
+- **Discussions**: Join project discussions
+- **Code**: Review existing implementations for examples
+
+## 🔮 Roadmap
+
+- [ ] MQTT integration for real-time updates
+- [ ] Machine learning for usage pattern optimization
+- [ ] Mobile app for remote control
+- [ ] Integration with more energy providers
+- [ ] Advanced battery management algorithms
+
+---
+
+**Happy coding!** 🚀 The EnergyCoach is designed to be developer-friendly with clear separation of concerns and comprehensive testing. Start with the planner service to understand the core energy optimization logic.

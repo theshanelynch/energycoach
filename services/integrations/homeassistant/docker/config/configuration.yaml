@@ -1,0 +1,73 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+homeassistant:
+  internal_url: "http://192.168.1.129:8123"
+
+command_line:
+  - sensor:
+      name: esb_energy_consumption_ha
+      unique_id: esb_energy_consumption_ha
+      command: "cat /config/www/esb_usage_ha.json"
+      value_template: >
+        {% set rows = value_json if value_json is iterable else [] %}
+        {% set best = namespace(ts=0, v=none, mprn='', meter_serial='', read_type='', read_date='') %}
+        {% for r in rows %}
+          {% if r.get('entity_id') == 'sensor.esb_energy_consumption' %}
+            {% set t = strptime(r.get('attributes', {}).get('read_date',''), '%d-%m-%Y %H:%M') %}
+            {% if t and as_timestamp(t) > best.ts %}
+              {% set best.ts = as_timestamp(t) %}
+              {% set kw = (r.get('state') | float) %}
+              {% set best.v = kw * 0.5 %}
+              {% set best.mprn = r.get('attributes', {}).get('mprn', '') %}
+              {% set best.meter_serial = r.get('attributes', {}).get('meter_serial', '') %}
+              {% set best.read_type = r.get('attributes', {}).get('read_type', '') %}
+              {% set best.read_date = r.get('attributes', {}).get('read_date', '') %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ best.v | round(3) if best.v is not none else 0 }}
+
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: measurement
+      scan_interval: 900
+      json_attributes:
+        - entity_id
+        - attributes
+        - last_changed
+        - last_updated
+        - mprn
+        - meter_serial
+        - read_type
+        - read_date
+  - sensor:
+      name: esb_energy_consumption_ha_2
+      unique_id: esb_energy_consumption_ha_2
+      command: "cat /config/www/esb_usage_ha.json"
+      value_template: >
+        {% set rows = value_json if value_json is iterable else [] %}
+        {% set best_ts = 0.0 %}
+        {% set best_val = none %}
+        {% for r in rows if r.get('entity_id') == 'sensor.esb_energy_consumption' %}
+          {% set s = r.get('attributes', {}).get('read_date') %}
+          {% set t = s and strptime(s, '%d-%m-%Y %H:%M') %}
+          {% if t and as_timestamp(t) > best_ts %}
+            {% set best_ts = as_timestamp(t) %}
+            {% set kw = (r.get('state') | float(0)) %}
+            {% set best_val = kw * 0.5 %}  {# 30 min -> kWh #}
+          {% endif %}
+        {% endfor %}
+        {{ (best_val if best_val is not none else 0) | round(3) }}
+      unit_of_measurement: "kWh"
+      device_class: energy
+      state_class: measurement
+      scan_interval: 900

@@ -3,23 +3,34 @@ backups/
 **/ha-url.png
 
 # Volatile state and privacy sensitive files
-docker/homeassistant/config/.storage/
-docker/homeassistant/config/.cloud/
-docker/homeassistant/config/home-assistant_v2.db*
-docker/homeassistant/config/home-assistant.log*
-docker/homeassistant/config/*.db-wal
-docker/homeassistant/config/*.db-shm
+**/config/.storage/
+**/config/.cloud/
+**/config/home-assistant_v2.db*
+**/config/home-assistant.log*
+**/config/*.db-wal
+**/config/*.db-shm
 
 # Secrets
-docker/homeassistant/config/secrets.yaml
-docker/homeassistant/secrets/
+**/config/secrets.yaml
+**/secrets/
 
 # Optional caches and deps
-docker/homeassistant/config/deps/
-docker/homeassistant/config/.uuid
+**/config/deps/
+**/config/.uuid
 
 
 # ESB
 esb/.venv/
 esb/out/
 secrets/
+
+# Data directory (contains generated data, not source code)
+data/*.json
+data/*/*.json
+data/.env
+!data/*/README.md
+!data/*/env.example
+!data/manage.sh
+
+
+solix/
