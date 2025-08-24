@@ -1,0 +1,151 @@
+Create a monorepo called energycoach with the following
+
+Goals
+  Build an Energy Coach agent that decides when to run the dishwasher and schedule long batch cooks based on solar forecast Anker Solix state ESB usage from Home Assistant and tariff windows
+  Speak short reasons and never start risky loads without consent
+  First class for daily family use and easy to share with others
+
+Stack
+  Node and TypeScript
+  pnpm workspaces
+  Docker compose for local run
+  Lightweight and testable
+  No external paid services required
+
+Packages
+  packages/contracts
+    Define all request and response types with zod and export shared types
+    Include OpenAPI yaml for the gateway routes
+
+  services/gateway
+    Fastify HTTP server
+    Routes
+      POST v1 intent  handles ENERGY_CHECK APPROVE_DISHWASHER MOVE_DISHWASHER PLAN_COOK SETTINGS_UPDATE
+      GET v1 health
+    Calls planner and returns speech card actions
+    Simple auth by shared bearer token
+    Logging with pino
+    Include minimal rate limit
+
+  services/planner
+    Pure functions and small state
+    Inputs
+      battery SoC PV now grid power and limits from solix adapter
+      half hourly usage from ESB via Home Assistant sensors
+      tariff windows and prices from config
+      weather forecast for next seventy two hours
+    Outputs
+      daily schedule for dishwasher and batch cook
+      reasons for each choice
+      battery plan guidance floor and whether to pre charge at night
+    Rules v1
+      compute hourly surplus  PV minus base minus reserve
+      place jobs in surplus or in cheapest window that avoids peak and keeps SoC above floor
+      never auto start an oven
+      dishwasher only with consent and safety checks
+    Provide a simple simulation for SoC hour by hour
+    Export plan in a compact JSON and a speech summary string
+
+  services/integrations
+    ha client
+      reads Home Assistant sensors via REST API  use long lived token from env
+      give helper to read sensors by entity id and to post notifications
+    esb adapter
+      expects ESB integration is installed in HA and provides sensors like sensor.esb_half_hourly_usage and sensor.esb_import_today
+      expose getUsageSeries start end and getBaseLoadProfile dayOfWeek
+    solix adapter
+      Assume community Anker Solix integration is installed in HA
+      read sensors for battery soc pv power grid power and charge limits
+      expose getSolixState
+    shelly adapter
+      control a named plug through HA services
+      expose canStartDishwasher and startDishwasher and powerNow
+
+  apps/cli
+    A small CLI to print today plan and to simulate a few days for tests
+
+  apps/voiceproxy
+    Express or Fastify webhook that matches the gateway contract
+    Keep it simple  this will be the endpoint you can connect to Google Assistant or Alexa later
+
+  packages/config
+    dotenv based config loader with zod validation
+    Store tariff windows battery floor quiet hours appliance policies and HA base url token
+
+Docker
+  docker compose with
+    node service for gateway at port 8080
+    node service for planner at port 8081
+    node service for voiceproxy at port 8082
+    optional mosquitto if you want MQTT later
+  Do not include a database yet  persist small state to JSON files under a data volume
+
+Environment variables
+  HA_BASE_URL
+  HA_TOKEN
+  TARIFF_JSON  see below
+  BATTERY_FLOOR_PERCENT default 30
+  QUIET_HOURS_START default 21 00
+  QUIET_HOURS_END default 07 00
+  DISHWASHER_ENTITY switch.dishwasher_plug or similar
+  GATEWAY_TOKEN shared bearer for simple auth
+
+Contracts
+  Intent request
+    { intent  string  user  string  slots  Record string any }
+  Intent response
+    { speech  string  card  { title string  items  Array  name string  start string  end string optional  reason string  }  actions  Array of  type string and fields by type  }
+  Planner request
+    { horizonHours number  default 48 }
+  Planner response
+    { plan  { dishwasher  { start string optional  reason string optional }  batchCook  { start string optional  end string optional  reason string optional } }  battery  { precharge boolean  targetPercent number optional  floorPercent number }  notes  string  costEstimateCents number optional }
+
+Example speech
+  Bright midday expected  Run the dishwasher at 13 10  Plan a ninety minute cook at 11 45  Battery stays above forty five percent
+
+Tariff JSON example put into TARIFF_JSON
+  {
+    "windows": [
+      {"name": "night", "from": "00:00", "to": "08:00", "price_cents": 22.0},
+      {"name": "day", "from": "08:00", "to": "17:00", "price_cents": 30.5},
+      {"name": "peak", "from": "17:00", "to": "19:00", "price_cents": 40.0},
+      {"name": "evening", "from": "19:00", "to": "24:00", "price_cents": 30.5}
+    ]
+  }
+
+Home Assistant entities  configurable by env or config json
+  sensor.solix_soc
+  sensor.solix_pv_power
+  sensor.solix_grid_power
+  sensor.esb_usage_30min  provides last 48 hours in attributes or expose a history fetch
+  switch.dishwasher_plug
+
+Planner details
+  Build a small module with
+    forecastPv hours
+    forecastBaseLoad hours  using ESB usage history  compute average by hour by day of week and smooth
+    simulateSoc initialSoc pv base jobLoads chargeLimits floor tariffs
+    placeJobs jobs surplus curve tariffs constraints
+  Jobs model
+    dishwasher  1.2 kWh over 120 to 180 minutes  canAutoStart true  latestEnd 24 00
+    batchCook  2.0 kWh over 90 to 180 minutes  canAutoStart false  earliestStart 10 00 latestEnd 20 00
+  Safety
+    dishwasher auto start only if canStartDishwasher returns true and user consent flag is true for today
+
+Tests
+  Unit tests for surplus calculation job placement and SoC simulation
+  Three fixtures  bright day mixed day cloudy day
+  Snapshot the speech string for each
+
+Developer experience
+  Root scripts
+    pnpm dev to run all services with nodemon
+    pnpm test
+    pnpm lint
+  Each service has README and env example
+  Provide a small mock HA server for tests  return canned sensor values
+
+Deliverables
+  A working scaffold that starts with pnpm i and docker compose up
+  Gateway route POST v1 intent that calls planner and returns a stable JSON
+  Planner that returns a sensible default plan when integrations are not configured  so the project runs out of the box
